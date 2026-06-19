@@ -32,7 +32,10 @@ services:
 
   backend:
     build:
-      context: ./backend
+      # Repo-root context so the image can bake in <repo>/db/migrations (outside
+      # the backend/ folder). See backend/Dockerfile.
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: forgecrm-backend
     restart: unless-stopped
     env_file:
@@ -45,10 +48,8 @@ services:
     volumes:
       - backend_uploads:/app/uploads
       - backend_media:/app/media
-      # Ship the SQL migrations to where the boot-time runner looks
-      # (src/db/migrate.js resolves __dirname/../../db/migrations = /app/db/migrations).
-      # Without this the runner logs "migrations directory not found" and skips.
-      - ./db/migrations:/app/db/migrations:ro
+      # NOTE: migrations are now baked into the image (see backend/Dockerfile),
+      # so no migrations bind mount is needed here.
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3011/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 15s

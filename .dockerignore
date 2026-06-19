@@ -1,0 +1,29 @@
+# Root build context (used by the backend image, which builds from repo root).
+# Keep it lean and NEVER bake secrets or unrelated trees into the image.
+
+**/node_modules
+.git
+.gitignore
+
+# Build artifacts
+**/dist
+**/build
+*.tgz
+
+# The frontend has its own build (context: ./frontend) — not needed here.
+frontend
+
+# Secrets / env files (the backend reads env at runtime via env_file, not baked in)
+.env
+.env.*
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Editor / assistant / OS noise
+.claude
+.cursor
+.vscode
+.idea
+*.md
+*.log

@@ -7,11 +7,21 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+# Build context is the REPO ROOT (see docker-compose.yml: context: . / dockerfile:
+# backend/Dockerfile) so we can also bake in the SQL migrations that live at
+# <repo>/db/migrations, outside the backend/ folder.
+COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev
 
-COPY src/ ./src/
-COPY scripts/ ./scripts/
+COPY backend/src/ ./src/
+COPY backend/scripts/ ./scripts/
+
+# Bake the DB migrations into the image at /app/db/migrations — exactly where the
+# boot-time runner looks (src/db/migrate.js: __dirname/../../db/migrations). This
+# guarantees migrations are always present (no bind-mount dependency) AND makes
+# every new migration change the image, so the backend container is recreated and
+# the migration actually runs on the next deploy.
+COPY db/migrations/ ./db/migrations/
 
 ENV NODE_ENV=production
 EXPOSE 3011
