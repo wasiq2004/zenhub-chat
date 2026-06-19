@@ -10,6 +10,9 @@ build/
 *.tgz
 
 # Environment & secrets — NEVER commit
+# Root .env holds machine-specific Compose overrides (host port bindings, etc.).
+# Compose auto-loads it; keep it local so dev ports never leak into prod.
+/.env
 
 # First-run generated admin credential (written by the backend on first boot)
 .admin-password
