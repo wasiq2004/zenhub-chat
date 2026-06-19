@@ -1,7 +1,12 @@
-# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
-# Terminates TLS for the subdomain and forwards everything to the frontend
-# container (nginx), which serves the SPA and proxies /api, /uploads, /l/ to the
-# backend. Requires: DNS A record for the domain -> droplet IP, ports 80+443 open.
-zenhubchat.axxeler.in {
+# Caddy sits BEHIND the host's existing reverse proxy, which owns 80/443 and
+# terminates TLS for zenhubchat.axxeler.in. So Caddy serves plain HTTP only
+# (the `http://` scheme disables Caddy's automatic Let's Encrypt — it can no
+# longer reach public 80/443 to complete the ACME challenge). The host proxy
+# should forward to this container's published port (default 8080) and pass the
+# Host header. Caddy then forwards to the frontend nginx (SPA + /api, /uploads, /l/).
+#
+# To make Caddy own TLS directly instead, restore `zenhubchat.axxeler.in {` and
+# publish ports 80:80 + 443:443 in docker-compose.yml.
+:80 {
     reverse_proxy forgecrm-frontend:80
 }

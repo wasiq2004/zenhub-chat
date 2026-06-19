@@ -1,21 +1,14 @@
 services:
-  caddy:
-    image: caddy:2-alpine
-    container_name: forgecrm-caddy
-    restart: unless-stopped
-    ports:
-      - "${CADDY_HTTP_PORT:-80}:80"
-      - "${CADDY_HTTPS_PORT:-443}:443"
-    depends_on:
-      frontend:
-        condition: service_started
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    networks:
-      - forgecrm
-
+  # The frontend (nginx) is the single web entrypoint: it serves the SPA and
+  # proxies /api, /uploads, /l/ and the SSE stream to the backend. The host's
+  # existing reverse proxy terminates TLS for the domain and forwards to the
+  # published port below. No Caddy container — it added a redundant hop and was
+  # the only thing fighting for host port 80.
+  #
+  # ── DOMAIN MAPPING ──────────────────────────────────────────────────────
+  # Point zenhubchat.axxeler.in (in your host's nginx/Caddy) at:
+  #     container: forgecrm-frontend   host port: 2001  (FRONTEND_PORT)
+  # i.e. proxy_pass http://127.0.0.1:2001;  — change FRONTEND_PORT if 2001 is taken.
   frontend:
     build:
       context: ./frontend
@@ -99,8 +92,6 @@ services:
       - forgecrm
 
 volumes:
-  caddy_data:
-  caddy_config:
   postgres_data:
   redis_data:
   backend_uploads:
