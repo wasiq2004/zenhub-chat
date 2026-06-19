@@ -59,23 +59,48 @@ async function ensureTables() {
       )
     `);
 
-    // First admin: when the users table is empty, only seed non-interactively if
-    // ADMIN_PASSWORD is provided (headless/CI installs). Otherwise leave the
-    // table empty so the first-run UI setup wizard (GET /auth/status ->
-    // setupRequired, POST /auth/setup) creates the admin in the browser. No
-    // password is ever generated or written to disk.
-    const { rows } = await client.query('SELECT COUNT(*) FROM coexistence.forgecrm_users');
-    if (parseInt(rows[0].count, 10) === 0) {
-      if (process.env.ADMIN_PASSWORD) {
-        const adminEmail = (process.env.ADMIN_EMAIL || 'admin@forgemind.space').trim().toLowerCase();
-        const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+    // Admin account, env-authoritative:
+    // When ADMIN_EMAIL/ADMIN_PASSWORD are set, the canonical `admin` account is
+    // kept IN SYNC with them on every boot — so the documented credentials always
+    // work regardless of when the DB was first seeded (a redeploy is enough to fix
+    // a stale admin; no SQL surgery needed). Trade-off: a password changed in the
+    // UI is overwritten by the env value on the next boot, so the env is the
+    // source of truth for this account.
+    // When ADMIN_PASSWORD is NOT set and the table is empty, fall back to the
+    // first-run UI setup wizard (GET /auth/status -> setupRequired, POST
+    // /auth/setup) and write nothing.
+    if (process.env.ADMIN_PASSWORD) {
+      const adminEmail = (process.env.ADMIN_EMAIL || 'admin@forgemind.space').trim().toLowerCase();
+      const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
+      // If a user with the env email already exists (under any username), just
+      // (re)assert its password + admin role — avoids the email UNIQUE collision.
+      const existing = await client.query(
+        'SELECT 1 FROM coexistence.forgecrm_users WHERE lower(email) = $1',
+        [adminEmail]
+      );
+      if (existing.rows.length) {
+        await client.query(
+          `UPDATE coexistence.forgecrm_users
+             SET password = $1, role = 'admin', updated_at = NOW()
+           WHERE lower(email) = $2`,
+          [hash, adminEmail]
+        );
+        console.log(`[auth] Synced admin '${adminEmail}' password/role from ADMIN_* env.`);
+      } else {
+        // No row with that email — upsert the canonical 'admin' account onto it.
         await client.query(
           `INSERT INTO coexistence.forgecrm_users (username, email, password, display_name, role)
-           VALUES ('admin', $1, $2, 'Admin', 'admin')`,
+             VALUES ('admin', $1, $2, 'Admin', 'admin')
+           ON CONFLICT (username) DO UPDATE
+             SET email = EXCLUDED.email, password = EXCLUDED.password,
+                 role = 'admin', updated_at = NOW()`,
           [adminEmail, hash]
         );
-        console.log(`[auth] Seeded admin '${adminEmail}' from ADMIN_PASSWORD.`);
-      } else {
+        console.log(`[auth] Ensured admin '${adminEmail}' from ADMIN_* env (env-authoritative).`);
+      }
+    } else {
+      const { rows } = await client.query('SELECT COUNT(*) FROM coexistence.forgecrm_users');
+      if (parseInt(rows[0].count, 10) === 0) {
         console.log('[auth] No users yet — the first-run setup wizard will create the admin account in the UI.');
       }
     }
