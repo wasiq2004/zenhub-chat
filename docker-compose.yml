@@ -28,7 +28,6 @@ services:
         condition: service_healthy
     networks:
       - forgecrm
-      - dokploy-network
 
   backend:
     build:
@@ -106,8 +105,3 @@ volumes:
 networks:
   forgecrm:
     driver: bridge
-  # Dokploy's shared Traefik network. Must already exist on the host (Dokploy
-  # creates it on install: `docker network create dokploy-network` if missing).
-  # The frontend joins this so Traefik can route the domain to it.
-  dokploy-network:
-    external: true
