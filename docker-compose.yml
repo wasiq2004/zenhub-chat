@@ -1,99 +1,102 @@
+version: "3.9"
+
 services:
-  # The frontend (nginx) is the single web entrypoint: it serves the SPA and
-  # proxies /api, /uploads, /l/ and the SSE stream to the backend.
-  #
-  # ── DOKPLOY DOMAIN MAPPING ───────────────────────────────────────────────
-  # Dokploy routes through Traefik over the shared `dokploy-network` (below),
-  # NOT via published host ports. So in the Dokploy UI → this app → Domains, add:
-  #     Host:            zenhubchat.axxeler.in
-  #     Service Name:    frontend
-  #     Container Port:  81          <-- the port nginx listens on INSIDE the
-  #                                      container, NOT the host port 2001.
-  #     HTTPS:           on (Let's Encrypt), Certificate: Let's Encrypt
-  # Traefik reaches forgecrm-frontend:81 directly; the 2001 host mapping below is
-  # only for optional direct access (http://server-ip:2001) and is not used by
-  # the domain.
   frontend:
     build:
       context: ./frontend
       args:
-        BACKEND_HOST: forgecrm-backend
+        BACKEND_HOST: backend
         BACKEND_PORT: 3011
-    container_name: forgecrm-frontend
+
     restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT:-2001}:81"
+
     depends_on:
       backend:
         condition: service_healthy
+
     networks:
       - forgecrm
-      - dokploy-network
 
   backend:
     build:
-      # Repo-root context so the image can bake in <repo>/db/migrations (outside
-      # the backend/ folder). See backend/Dockerfile.
       context: .
       dockerfile: backend/Dockerfile
-    container_name: forgecrm-backend
+
     restart: unless-stopped
+
     env_file:
       - ./backend/.env
+
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
     volumes:
       - backend_uploads:/app/uploads
       - backend_media:/app/media
-      # NOTE: migrations are now baked into the image (see backend/Dockerfile),
-      # so no migrations bind mount is needed here.
+
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:3011/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3011/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
       start_period: 40s
+
     networks:
       - forgecrm
 
   postgres:
     image: postgres:16-alpine
-    container_name: forgecrm-db
+
     restart: unless-stopped
+
     env_file:
       - ./backend/.env
+
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/initdb:/docker-entrypoint-initdb.d:ro
       - ./db/migrations:/migrations:ro
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
+
     networks:
       - forgecrm
 
   redis:
     image: redis:7-alpine
-    container_name: forgecrm-redis
+
     restart: unless-stopped
+
     command: redis-server --appendonly yes
+
     volumes:
       - redis_data:/data
+
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
+
     networks:
       - forgecrm
 
@@ -106,8 +109,3 @@ volumes:
 networks:
   forgecrm:
     driver: bridge
-  # Dokploy's shared Traefik network. Must already exist on the host (Dokploy
-  # creates it on install: `docker network create dokploy-network` if missing).
-  # The frontend joins this so Traefik can route the domain to it.
-  dokploy-network:
-    external: true
